@@ -833,6 +833,8 @@ def getAllItemsWithName(name, cataloglist):
                     indexlist = CATALOG[catalogname]['named'][name][vers]
                     for index in indexlist:
                         thisitem = CATALOG[catalogname]['items'][index]
+                        if not isItemMachineAppropriate(thisitem):
+                            continue
                         if not thisitem in itemlist:
                             munkicommon.display_debug1(
                              'Adding item %s, version %s from catalog %s...' %
@@ -862,6 +864,91 @@ def trimVersionString(version_string):
         del(version_parts[-1])
     return '.'.join(version_parts)
 
+def isItemMachineAppropriate(item, rejected_items=None):
+    """Determines whether a pkginfo item is appropriate for this machine.
+
+    Properties check include:
+        {minimum,maximum}_os_version
+        supported_architectures
+
+    Args:
+        item: dict, pkginfo item
+        rejected_items: optional, list, if supplied a string will be
+            appended to this list explaining why the item was rejected.
+    Returns:
+        True if it is appropriate, False if not.
+    """
+    if item.get('minimum_os_version', ''):
+        min_os_vers = item['minimum_os_version']
+        munkicommon.display_debug1(
+            'Considering item %s, ' % item['name'] +
+            'version %s ' % item['version'] +
+            'with minimum os version required %s' % min_os_vers)
+        munkicommon.display_debug1('Our OS version is %s' %
+                                    MACHINE['os_vers'])
+        if (munkicommon.MunkiLooseVersion(MACHINE['os_vers']) <
+           munkicommon.MunkiLooseVersion(min_os_vers)):
+            # skip this one, go to the next
+            reason = (('Rejected item %s, version %s '
+                      'with minimum os version required %s. '
+                      "Our OS version is %s.")
+                      % (item['name'], item['version'],
+                         item['minimum_os_version'],
+                         MACHINE['os_vers']))
+            if type(rejected_items) is list:
+                rejected_items.append(reason)
+            return False
+
+    if item.get('maximum_os_version', ''):
+        max_os_vers = item['maximum_os_version']
+        munkicommon.display_debug1(
+            'Considering item %s, ' % item['name'] +
+            'version %s ' % item['version'] +
+            'with maximum os version supported %s' % max_os_vers)
+        munkicommon.display_debug1('Our OS version is %s' %
+                                    MACHINE['os_vers'])
+        if (munkicommon.MunkiLooseVersion(MACHINE['os_vers']) >
+            munkicommon.MunkiLooseVersion(max_os_vers)):
+            # skip this one, go to the next
+            reason = (('Rejected item %s, version %s '
+                      'with maximum os version required %s. '
+                      'Our OS version is %s.')
+                      % (item['name'], item['version'],
+                         item['maximum_os_version'],
+                         MACHINE['os_vers']))
+            if type(rejected_items) is list:
+                rejected_items.append(reason)
+            return False
+
+    if 'supported_architectures' in item:
+        supported_arch_found = False
+        munkicommon.display_debug1(
+            'Considering item %s, ' % item['name'] +
+            'version %s ' % item['version'] +
+            'with supported architectures: %s' %
+                                item['supported_architectures'])
+        munkicommon.display_debug1('Our architecture is %s' %
+                                    MACHINE['arch'])
+        for arch in item['supported_architectures']:
+            if arch == MACHINE['arch']:
+                # we found a supported architecture that matches
+                # this machine, so we can use it
+                supported_arch_found = True
+                break
+
+        if not supported_arch_found:
+            # we didn't find a supported architecture that
+            # matches this machine
+            reason = (('Rejected item %s, version %s '
+                      'with supported architectures: %s. '
+                      'Our architecture is %s.')
+                      % (item['name'], item['version'],
+                         item['supported_architectures'],
+                         MACHINE['arch']))
+            if type(rejected_items) is list:
+                rejected_items.append(reason)
+            return False
+    return True
 
 def getItemDetail(name, cataloglist, vers=''):
     """Searches the catalogs in list for an item matching the given name.
@@ -913,75 +1000,8 @@ def getItemDetail(name, cataloglist, vers=''):
                 (len(indexlist), name, catalogname))
             for index in indexlist:
                 item = CATALOG[catalogname]['items'][index]
-                # we have an item whose name and version matches the request.
-                # now check to see if it meets os and cpu requirements
-                if item.get('minimum_os_version', ''):
-                    min_os_vers = item['minimum_os_version']
-                    munkicommon.display_debug1(
-                        'Considering item %s, ' % item['name'] +
-                        'version %s ' % item['version'] +
-                        'with minimum os version required %s' % min_os_vers)
-                    munkicommon.display_debug1('Our OS version is %s' %
-                                                MACHINE['os_vers'])
-                    if (munkicommon.MunkiLooseVersion(MACHINE['os_vers']) <
-                       munkicommon.MunkiLooseVersion(min_os_vers)):
-                        # skip this one, go to the next
-                        reason = (('Rejected item %s, version %s '
-                                  'with minimum os version required %s. '
-                                  "Our OS version is %s.")
-                                  % (item['name'], item['version'],
-                                     item['minimum_os_version'],
-                                     MACHINE['os_vers']))
-                        rejected_items.append(reason)
-                        continue
-
-                if item.get('maximum_os_version', ''):
-                    max_os_vers = item['maximum_os_version']
-                    munkicommon.display_debug1(
-                        'Considering item %s, ' % item['name'] +
-                        'version %s ' % item['version'] +
-                        'with maximum os version supported %s' % max_os_vers)
-                    munkicommon.display_debug1('Our OS version is %s' %
-                                                MACHINE['os_vers'])
-                    if (munkicommon.MunkiLooseVersion(MACHINE['os_vers']) >
-                        munkicommon.MunkiLooseVersion(max_os_vers)):
-                        # skip this one, go to the next
-                        reason = (('Rejected item %s, version %s '
-                                  'with maximum os version required %s. '
-                                  'Our OS version is %s.')
-                                  % (item['name'], item['version'],
-                                     item['maximum_os_version'],
-                                     MACHINE['os_vers']))
-                        rejected_items.append(reason)
-                        continue
-
-                if 'supported_architectures' in item:
-                    supported_arch_found = False
-                    munkicommon.display_debug1(
-                        'Considering item %s, ' % item['name'] +
-                        'version %s ' % item['version'] +
-                        'with supported architectures: %s' %
-                                            item['supported_architectures'])
-                    munkicommon.display_debug1('Our architecture is %s' %
-                                                MACHINE['arch'])
-                    for arch in item['supported_architectures']:
-                        if arch == MACHINE['arch']:
-                            # we found a supported architecture that matches
-                            # this machine, so we can use it
-                            supported_arch_found = True
-                            break
-
-                    if not supported_arch_found:
-                        # we didn't find a supported architecture that
-                        # matches this machine
-                        reason = (('Rejected item %s, version %s '
-                                  'with supported architectures: %s. '
-                                  'Our architecture is %s.')
-                                  % (item['name'], item['version'],
-                                     item['supported_architectures'],
-                                     MACHINE['arch']))
-                        rejected_items.append(reason)
-                        continue
+                if not isItemMachineAppropriate(item, rejected_items):
+                    continue
 
                 # item name, version, minimum_os_version, and
                 # supported_architecture are all OK
