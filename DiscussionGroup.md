@@ -1,0 +1,1 @@
+Discussion group is here: http://groups.google.com/group/munki-dev
